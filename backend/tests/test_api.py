@@ -125,31 +125,65 @@ def test_get_task_by_id(client):
 
 def test_delete_task(client):
     """Supprimer une tâche existante renvoie 204, puis la tâche n'existe plus (GET → 404)."""
-    pytest.fail("Test à écrire (Exercice 1)")
+    created = client.post("/tasks", json={"title": "À supprimer"})
+    assert created.status_code == 201
+    task_url = f"/tasks/{created.json()['id']}"
+
+    response = client.delete(task_url)
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.get(task_url).status_code == 404
 
 
 def test_delete_nonexistent_task(client):
     """Supprimer une tâche qui n'existe pas renvoie 404."""
-    pytest.fail("Test à écrire (Exercice 1)")
+    response = client.delete("/tasks/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Task 999 not found"}
 
 
 # --- Exercice 2 : modifier une tâche ---
 
 def test_update_task_title(client):
     """Modifier le titre d'une tâche renvoie 200 et la tâche avec le nouveau titre."""
-    pytest.fail("Test à écrire (Exercice 2)")
+    created = client.post("/tasks", json={"title": "Ancien titre"})
+    assert created.status_code == 201
+    task_url = f"/tasks/{created.json()['id']}"
+
+    response = client.put(task_url, json={"title": "Nouveau titre"})
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Nouveau titre"
+    assert client.get(task_url).json() == response.json()
 
 
 def test_update_only_changes_sent_fields(client):
     """Créez une tâche avec un titre, une description et une priorité,
     puis envoyez seulement {"status": "done"} : le statut change,
     mais le titre, la description et la priorité restent identiques."""
-    pytest.fail("Test à écrire (Exercice 2)")
+    created = client.post(
+        "/tasks",
+        json={"title": "Rapport", "description": "Vérifier les chiffres", "priority": "high"},
+    )
+    assert created.status_code == 201
+    original = created.json()
+    task_url = f"/tasks/{original['id']}"
+
+    response = client.put(task_url, json={"status": "done"})
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated == {**original, "status": "done", "updated_at": updated["updated_at"]}
 
 
 def test_update_nonexistent_task(client):
     """Modifier une tâche qui n'existe pas renvoie 404."""
-    pytest.fail("Test à écrire (Exercice 2)")
+    response = client.put("/tasks/999", json={"status": "done"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Task 999 not found"}
 
 
 # =============================================================================
@@ -161,24 +195,43 @@ def test_update_nonexistent_task(client):
 
 def test_create_task_with_empty_title(client):
     """Créer une tâche avec un titre vide ("") est refusé : 422."""
-    pytest.fail("Test à écrire (Exercice 3)")
+    response = client.post("/tasks", json={"title": ""})
+
+    assert response.status_code == 422
 
 
 def test_get_nonexistent_task(client):
     """Demander une tâche qui n'existe pas renvoie 404."""
-    pytest.fail("Test à écrire (Exercice 3)")
+    response = client.get("/tasks/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Task 999 not found"}
 
 
 def test_update_task_with_invalid_priority(client):
     """Mettre à jour une tâche avec priority="urgent" est refusé : 422.
     (Les priorités valides sont "low", "medium" et "high".)"""
-    pytest.fail("Test à écrire (Exercice 3)")
+    created = client.post("/tasks", json={"title": "Rapport"})
+    assert created.status_code == 201
+    task_url = f"/tasks/{created.json()['id']}"
+
+    response = client.put(task_url, json={"priority": "urgent"})
+
+    assert response.status_code == 422
+    assert client.get(task_url).json() == created.json()
 
 
 def test_filter_tasks_by_status(client):
     """Créez une tâche "todo" et une tâche "done" : GET /tasks?status=done
     ne renvoie qu'une seule tâche, celle qui est terminée."""
-    pytest.fail("Test à écrire (Exercice 3)")
+    pending = client.post("/tasks", json={"title": "À faire", "status": "todo"})
+    done = client.post("/tasks", json={"title": "Terminée", "status": "done"})
+    assert pending.status_code == done.status_code == 201
+
+    response = client.get("/tasks", params={"status": "done"})
+
+    assert response.status_code == 200
+    assert response.json() == [done.json()]
 
 
 # =============================================================================
@@ -186,18 +239,30 @@ def test_filter_tasks_by_status(client):
 # =============================================================================
 #
 # Supprimez la ligne @pytest.mark.skip(...) pour activer un test.
-
-@pytest.mark.skip(reason="Bonus : supprimez cette ligne pour écrire le test")
 def test_filter_by_status_and_priority(client):
     """GET /tasks?status=todo&priority=high combine les deux filtres."""
-    pytest.fail("Test à écrire (Bonus)")
+    matching = client.post("/tasks", json={"title": "Urgente", "priority": "high"})
+    other_priority = client.post("/tasks", json={"title": "Ordinaire", "priority": "low"})
+    other_status = client.post(
+        "/tasks", json={"title": "Terminée", "status": "done", "priority": "high"}
+    )
+    assert matching.status_code == other_priority.status_code == other_status.status_code == 201
+
+    response = client.get("/tasks", params={"status": "todo", "priority": "high"})
+
+    assert response.status_code == 200
+    assert response.json() == [matching.json()]
 
 
-@pytest.mark.skip(reason="Bonus : supprimez cette ligne pour écrire le test")
 def test_create_task_with_title_too_long(client):
     """Le titre est limité à 200 caractères : 200 est accepté (201), 201 est refusé (422).
     Astuce : "a" * 200 crée un texte de 200 caractères."""
-    pytest.fail("Test à écrire (Bonus)")
+    accepted = client.post("/tasks", json={"title": "a" * 200})
+    rejected = client.post("/tasks", json={"title": "a" * 201})
+
+    assert accepted.status_code == 201
+    assert accepted.json()["title"] == "a" * 200
+    assert rejected.status_code == 422
 
 
 # =============================================================================
