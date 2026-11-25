@@ -2,11 +2,7 @@ name: Backend Tests
 
 on:
   workflow_call: 
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
+  
 jobs:
   backend:
     runs-on: ubuntu-latest
